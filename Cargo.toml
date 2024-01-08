@@ -1,0 +1,21 @@
+[package]
+name = "imap-sec"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+argh = "0.1.12"
+bytes = "1.5.0"
+imap-flow = { git = "https://github.com/duesee/imap-flow", branch = "feature_expose_stream", features = ["expose_stream"] }
+imap-codec = { version = "2", features = ["bounded-static"] }
+imap-types = { version = "2", features = ["bounded-static"] }
+tokio = { version = "1.35.1", features = ["macros", "rt", "net", "io-util", "time", "rt-multi-thread"] }
+tracing = "0.1.37"
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+log = "0.4.20"
+
+[patch.crates-io]
+imap-codec = { git = "https://github.com/duesee/imap-codec" }
+imap-types = { git = "https://github.com/duesee/imap-codec" }
