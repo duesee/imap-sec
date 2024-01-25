@@ -6,9 +6,10 @@ use imap_types::{
     command::{Command, CommandBody},
     core::Tag,
     response::{Status, StatusBody, StatusKind, Tagged},
+    utils::escape_byte_string,
 };
 use tokio::{io::AsyncWriteExt, net::TcpStream};
-use tracing::{error, info, warn};
+use tracing::{error, info, trace, warn};
 
 use crate::bisect;
 
@@ -136,7 +137,7 @@ pub(crate) async fn allowed_tag(host: &str) -> Vec<(u8, char, Option<AllowedResu
         .map(|dec| (dec, dec as char, None))
         .collect::<Vec<_>>();
 
-    for (_, char, res) in tests.iter_mut() {
+    for (dec, _, res) in tests.iter_mut() {
         let (mut client, _) = ClientFlow::receive_greeting(
             AnyStream::new(TcpStream::connect(host).await.unwrap()),
             ClientFlowOptions::default(),
@@ -144,21 +145,24 @@ pub(crate) async fn allowed_tag(host: &str) -> Vec<(u8, char, Option<AllowedResu
         .await
         .unwrap();
 
-        let test = format!("A{}", char);
+        let mut test = Vec::new();
+        test.push(b'A');
+        test.push(*dec);
 
-        client
-            .stream_mut()
-            .0
-            .write_all(format!("{test} NOOP\r\n").as_bytes())
-            .await
-            .unwrap();
+        let mut data = Vec::new();
+        data.extend_from_slice(&test);
+        data.extend_from_slice(b" NOOP\r\n");
+
+        // TODO: Hack
+        trace!(data = escape_byte_string(&data), "io/write/raw");
+        client.stream_mut().0.write_all(&data).await.unwrap();
 
         loop {
             match client.progress().await {
                 Ok(ClientFlowEvent::StatusReceived {
                     status: Status::Tagged(Tagged { tag, .. }),
                 }) => {
-                    *res = Some(if test.as_str() == tag.as_ref() {
+                    *res = Some(if test == tag.as_ref().as_bytes() {
                         AllowedResult::Reflected
                     } else {
                         AllowedResult::ReflectedBroken

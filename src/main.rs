@@ -3,6 +3,7 @@ mod exploit;
 mod learn;
 
 use argh::FromArgs;
+use imap_types::utils::escape_byte_string;
 use tracing::{info, Level};
 use tracing_subscriber::{filter::Directive, EnvFilter};
 
@@ -116,7 +117,11 @@ async fn main() {
             let allowed_tag_characters = learn::allowed_tag(&host).await;
             println!("Allowed tag characters:");
             for (dec, char, result) in allowed_tag_characters {
-                println!("{dec}: \"A[{char}]\" => {:?}", result.unwrap());
+                println!(
+                    "{dec}: \"A{}\" => {:?}",
+                    escape_byte_string(&[char as u8]),
+                    result.unwrap()
+                );
             }
         }
         SubCommand::OutOfMemory(OutOfMemory {
