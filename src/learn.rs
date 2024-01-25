@@ -83,6 +83,7 @@ pub(crate) async fn max_tag(host: &str, min: u64, max: u64) -> u64 {
 
         loop {
             match client.progress().await {
+                Ok(ClientFlowEvent::CommandSent { .. }) => {}
                 Ok(ClientFlowEvent::StatusReceived {
                     status: Status::Tagged(Tagged { tag, .. }),
                 }) if tag.as_ref() == test.as_str() => {
