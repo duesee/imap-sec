@@ -2,8 +2,6 @@ mod bisect;
 mod exploit;
 mod learn;
 
-use std::net::SocketAddr;
-
 use argh::FromArgs;
 use tracing::{info, Level};
 use tracing_subscriber::{filter::Directive, EnvFilter};
@@ -30,7 +28,7 @@ enum SubCommand {
 struct MaxTag {
     /// host
     #[argh(positional)]
-    host: SocketAddr,
+    host: String,
 
     /// min
     #[argh(positional)]
@@ -47,7 +45,7 @@ struct MaxTag {
 struct MaxLiteral {
     /// host
     #[argh(positional)]
-    host: SocketAddr,
+    host: String,
 
     /// min
     #[argh(positional)]
@@ -64,7 +62,7 @@ struct MaxLiteral {
 struct AllowedTag {
     /// host
     #[argh(positional)]
-    host: SocketAddr,
+    host: String,
 }
 
 /// Try to bring server OOM via SEARCH command. WARNING: Don't use in production.
@@ -73,7 +71,7 @@ struct AllowedTag {
 struct OutOfMemory {
     /// host
     #[argh(positional)]
-    host: SocketAddr,
+    host: String,
 
     /// username
     #[argh(positional)]

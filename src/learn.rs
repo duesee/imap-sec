@@ -1,5 +1,3 @@
-use std::net::SocketAddr;
-
 use imap_flow::{
     client::{ClientFlow, ClientFlowEvent, ClientFlowOptions},
     stream::AnyStream,
@@ -14,8 +12,8 @@ use tracing::{error, info, warn};
 
 use crate::bisect;
 
-pub(crate) async fn max_literal(host: &SocketAddr, min: u64, max: u64) -> u64 {
-    async fn _max_literal(host: &SocketAddr, test: u64) -> bool {
+pub(crate) async fn max_literal(host: &str, min: u64, max: u64) -> u64 {
+    async fn _max_literal(host: &str, test: u64) -> bool {
         let (mut client, _) = ClientFlow::receive_greeting(
             AnyStream::new(TcpStream::connect(host).await.unwrap()),
             ClientFlowOptions::default(),
@@ -69,8 +67,8 @@ pub(crate) async fn max_literal(host: &SocketAddr, min: u64, max: u64) -> u64 {
     bisect.finish().unwrap()
 }
 
-pub(crate) async fn max_tag(host: &SocketAddr, min: u64, max: u64) -> u64 {
-    async fn _max_tag(host: &SocketAddr, test: u32) -> bool {
+pub(crate) async fn max_tag(host: &str, min: u64, max: u64) -> u64 {
+    async fn _max_tag(host: &str, test: u32) -> bool {
         let (mut client, _) = ClientFlow::receive_greeting(
             AnyStream::new(TcpStream::connect(host).await.unwrap()),
             ClientFlowOptions::default(),
@@ -131,7 +129,7 @@ pub(crate) enum AllowedResult {
     Error,
 }
 
-pub(crate) async fn allowed_tag(host: &SocketAddr) -> Vec<(u8, char, Option<AllowedResult>)> {
+pub(crate) async fn allowed_tag(host: &str) -> Vec<(u8, char, Option<AllowedResult>)> {
     let mut tests = (0..=255u8)
         .into_iter()
         .map(|dec| (dec, dec as char, None))
@@ -167,8 +165,8 @@ pub(crate) async fn allowed_tag(host: &SocketAddr) -> Vec<(u8, char, Option<Allo
                     break;
                 }
                 Ok(ClientFlowEvent::StatusReceived {
-                       status: Status::Untagged(StatusBody { kind, .. }),
-                   }) if kind == StatusKind::Bad => {
+                    status: Status::Untagged(StatusBody { kind, .. }),
+                }) if kind == StatusKind::Bad => {
                     *res = Some(AllowedResult::Bad);
                     break;
                 }
