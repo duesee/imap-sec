@@ -1,8 +1,8 @@
 use std::error::Error;
 
-use imap_flow::{
-    client::{ClientFlow, ClientFlowEvent, ClientFlowOptions},
-    stream::AnyStream,
+use imap_next::{
+    client::{Client, Event, Options},
+    stream::Stream,
 };
 use imap_types::{
     command::{Command, CommandBody},
@@ -81,12 +81,15 @@ pub(crate) async fn info(
     username: Option<String>,
     password: Option<String>,
 ) -> Result<InfoSimple, Box<dyn Error>> {
-    let (mut client, greeting) = ClientFlow::receive_greeting(
-        AnyStream::new(TcpStream::connect(host).await.unwrap()),
-        ClientFlowOptions::default(),
-    )
-    .await
-    .unwrap();
+    let mut stream = Stream::insecure(TcpStream::connect(host).await.unwrap());
+    let mut client = Client::new(Options::default());
+
+    let greeting = loop {
+        match stream.next(&mut client).await.unwrap() {
+            Event::GreetingReceived { greeting } => break greeting,
+            event => println!("unexpected event: {event:?}"),
+        }
+    };
 
     let mut result = Info {
         greeting_capability: if let Some(Code::Capability(capabilities)) = greeting.code {
@@ -103,12 +106,12 @@ pub(crate) async fn info(
     client.enqueue_command(Command::new("X", CommandBody::Capability)?);
 
     loop {
-        match client.progress().await? {
-            ClientFlowEvent::CommandSent { .. } => {}
-            ClientFlowEvent::DataReceived {
+        match stream.next(&mut client).await? {
+            Event::CommandSent { .. } => {}
+            Event::DataReceived {
                 data: Data::Capability(capabilities),
             } => result.pre_auth_capability = Some(capabilities),
-            ClientFlowEvent::StatusReceived {
+            Event::StatusReceived {
                 status:
                     Status::Tagged(Tagged {
                         tag,
@@ -139,12 +142,12 @@ pub(crate) async fn info(
     client.enqueue_command(Command::new("A", id_body.clone())?);
 
     loop {
-        match client.progress().await? {
-            ClientFlowEvent::CommandSent { .. } => {}
-            ClientFlowEvent::DataReceived {
+        match stream.next(&mut client).await? {
+            Event::CommandSent { .. } => {}
+            Event::DataReceived {
                 data: Data::Id { parameters },
             } => result.pre_auth_id = Some(parameters),
-            ClientFlowEvent::StatusReceived {
+            Event::StatusReceived {
                 status: Status::Tagged(Tagged { tag, .. }),
             } if tag.as_ref() == "A" => {
                 break;
@@ -159,9 +162,9 @@ pub(crate) async fn info(
         client.enqueue_command(Command::new("B", CommandBody::login(username, password)?)?);
 
         loop {
-            match client.progress().await? {
-                ClientFlowEvent::CommandSent { .. } => {}
-                ClientFlowEvent::StatusReceived {
+            match stream.next(&mut client).await? {
+                Event::CommandSent { .. } => {}
+                Event::StatusReceived {
                     status:
                         Status::Tagged(Tagged {
                             tag,
@@ -184,12 +187,12 @@ pub(crate) async fn info(
         client.enqueue_command(Command::new("X2", CommandBody::Capability)?);
 
         loop {
-            match client.progress().await? {
-                ClientFlowEvent::CommandSent { .. } => {}
-                ClientFlowEvent::DataReceived {
+            match stream.next(&mut client).await? {
+                Event::CommandSent { .. } => {}
+                Event::DataReceived {
                     data: Data::Capability(capabilities),
                 } => result.pre_auth_capability = Some(capabilities),
-                ClientFlowEvent::StatusReceived {
+                Event::StatusReceived {
                     status:
                         Status::Tagged(Tagged {
                             tag,
@@ -213,12 +216,12 @@ pub(crate) async fn info(
         client.enqueue_command(Command::new("C", id_body.clone())?);
 
         loop {
-            match client.progress().await? {
-                ClientFlowEvent::CommandSent { .. } => {}
-                ClientFlowEvent::DataReceived {
+            match stream.next(&mut client).await? {
+                Event::CommandSent { .. } => {}
+                Event::DataReceived {
                     data: Data::Id { parameters },
                 } => result.post_auth_id = Some(parameters),
-                ClientFlowEvent::StatusReceived {
+                Event::StatusReceived {
                     status: Status::Tagged(Tagged { tag, .. }),
                 } if tag.as_ref() == "C" => {
                     break;
@@ -235,33 +238,35 @@ pub(crate) async fn info(
 
 pub(crate) async fn max_literal(host: &str, min: u64, max: u64) -> u64 {
     async fn _max_literal(host: &str, test: u64) -> bool {
-        let (mut client, _) = ClientFlow::receive_greeting(
-            AnyStream::new(TcpStream::connect(host).await.unwrap()),
-            ClientFlowOptions::default(),
-        )
-        .await
-        .unwrap();
+        let mut stream = Stream::insecure(TcpStream::connect(host).await.unwrap());
+        let mut client = Client::new(Options::default());
 
-        client
+        let _ = loop {
+            match stream.next(&mut client).await.unwrap() {
+                Event::GreetingReceived { greeting } => break greeting,
+                event => println!("unexpected event: {event:?}"),
+            }
+        };
+
+        stream
             .stream_mut()
-            .0
             .write_all(format!("A LOGIN {{{}}}\r\n", test).as_bytes())
             .await
             .unwrap();
 
         loop {
-            match client.progress().await {
-                Ok(ClientFlowEvent::StatusReceived {
+            match stream.next(&mut client).await {
+                Ok(Event::StatusReceived {
                     status: Status::Tagged(Tagged { tag, .. }),
                 }) if tag.as_ref() == "A" => {
                     return false;
                 }
-                Ok(ClientFlowEvent::StatusReceived {
+                Ok(Event::StatusReceived {
                     status: Status::Bye(_),
                 }) => {
                     return false;
                 }
-                Ok(ClientFlowEvent::ContinuationReceived { .. }) => {
+                Ok(Event::ContinuationRequestReceived { .. }) => {
                     return true;
                 }
                 Ok(event) => warn!(?event, "unexpected event"),
@@ -290,12 +295,15 @@ pub(crate) async fn max_literal(host: &str, min: u64, max: u64) -> u64 {
 
 pub(crate) async fn max_tag(host: &str, min: u64, max: u64) -> u64 {
     async fn _max_tag(host: &str, test: u32) -> bool {
-        let (mut client, _) = ClientFlow::receive_greeting(
-            AnyStream::new(TcpStream::connect(host).await.unwrap()),
-            ClientFlowOptions::default(),
-        )
-        .await
-        .unwrap();
+        let mut stream = Stream::insecure(TcpStream::connect(host).await.unwrap());
+        let mut client = Client::new(Options::default());
+
+        let _ = loop {
+            match stream.next(&mut client).await.unwrap() {
+                Event::GreetingReceived { greeting } => break greeting,
+                event => println!("unexpected event: {event:?}"),
+            }
+        };
 
         let test = "A".repeat(test as usize);
         let tag = Tag::unvalidated(test.clone());
@@ -303,19 +311,19 @@ pub(crate) async fn max_tag(host: &str, min: u64, max: u64) -> u64 {
         client.enqueue_command(Command::new(tag, CommandBody::Noop).unwrap());
 
         loop {
-            match client.progress().await {
-                Ok(ClientFlowEvent::CommandSent { .. }) => {}
-                Ok(ClientFlowEvent::StatusReceived {
+            match stream.next(&mut client).await {
+                Ok(Event::CommandSent { .. }) => {}
+                Ok(Event::StatusReceived {
                     status: Status::Tagged(Tagged { tag, .. }),
                 }) if tag.as_ref() == test.as_str() => {
                     return true;
                 }
-                Ok(ClientFlowEvent::StatusReceived {
+                Ok(Event::StatusReceived {
                     status: Status::Bye(_),
                 }) => {
                     return false;
                 }
-                Ok(ClientFlowEvent::StatusReceived {
+                Ok(Event::StatusReceived {
                     status: Status::Untagged(StatusBody { kind, .. }),
                 }) if kind == StatusKind::Bad => {
                     return false;
@@ -358,12 +366,15 @@ pub(crate) async fn allowed_tag(host: &str) -> Vec<(u8, char, Option<AllowedResu
         .collect::<Vec<_>>();
 
     for (dec, _, res) in tests.iter_mut() {
-        let (mut client, _) = ClientFlow::receive_greeting(
-            AnyStream::new(TcpStream::connect(host).await.unwrap()),
-            ClientFlowOptions::default(),
-        )
-        .await
-        .unwrap();
+        let mut stream = Stream::insecure(TcpStream::connect(host).await.unwrap());
+        let mut client = Client::new(Options::default());
+
+        let _ = loop {
+            match stream.next(&mut client).await.unwrap() {
+                Event::GreetingReceived { greeting } => break greeting,
+                event => println!("unexpected event: {event:?}"),
+            }
+        };
 
         let mut test = Vec::new();
         test.push(b'A');
@@ -375,11 +386,11 @@ pub(crate) async fn allowed_tag(host: &str) -> Vec<(u8, char, Option<AllowedResu
 
         // TODO: Hack
         trace!(data = escape_byte_string(&data), "io/write/raw");
-        client.stream_mut().0.write_all(&data).await.unwrap();
+        stream.stream_mut().write_all(&data).await.unwrap();
 
         loop {
-            match client.progress().await {
-                Ok(ClientFlowEvent::StatusReceived {
+            match stream.next(&mut client).await {
+                Ok(Event::StatusReceived {
                     status: Status::Tagged(Tagged { tag, .. }),
                 }) => {
                     *res = Some(if test == tag.as_ref().as_bytes() {
@@ -389,13 +400,13 @@ pub(crate) async fn allowed_tag(host: &str) -> Vec<(u8, char, Option<AllowedResu
                     });
                     break;
                 }
-                Ok(ClientFlowEvent::StatusReceived {
+                Ok(Event::StatusReceived {
                     status: Status::Untagged(StatusBody { kind, .. }),
                 }) if kind == StatusKind::Bad => {
                     *res = Some(AllowedResult::Bad);
                     break;
                 }
-                Ok(ClientFlowEvent::StatusReceived {
+                Ok(Event::StatusReceived {
                     status: Status::Bye(_),
                 }) => {
                     *res = Some(AllowedResult::Bye);
