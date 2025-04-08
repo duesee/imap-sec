@@ -11,7 +11,7 @@ bytes = "1.6.0"
 imap-next = { git = "https://github.com/duesee/imap-next", features = ["expose_stream"] }
 imap-codec = { version = "2", features = ["bounded-static", "ext_id", "ext_login_referrals", "starttls"] }
 imap-types = { version = "2", features = ["bounded-static", "serde"] }
-tokio = { version = "1.38.0", features = ["macros", "rt", "net", "io-util", "time", "rt-multi-thread"] }
+tokio = { version = "1.38.2", features = ["macros", "rt", "net", "io-util", "time", "rt-multi-thread"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 log = "0.4.21"
