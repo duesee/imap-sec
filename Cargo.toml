@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 argh = "0.1.12"
-bytes = "1.6.0"
+bytes = "1.11.1"
 imap-next = { git = "https://github.com/duesee/imap-next", features = ["expose_stream"] }
 imap-codec = { version = "2", features = ["bounded-static", "ext_id", "ext_login_referrals", "starttls"] }
 imap-types = { version = "2", features = ["bounded-static", "serde"] }
